@@ -39,8 +39,8 @@
  *
  *
  * Modification:
- *
- *
+ *  loop unroll
+ *  register variables
  * */
 
 #include "bl_dgemm.h"
