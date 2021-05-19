@@ -39,17 +39,39 @@
  *
  *
  * Modification:
- *
+ *  loop unroll
  *
  * */
 
 #include "bl_dgemm.h"
+
+void AddDot(int k, double *A, int lda, double *B, int ldb, double *result) {
+  int p;
+  for (p = 0; p < k; p ++) {
+    *result += A(0, p) * B(p, 0);
+  }
+}
+
+void AddDot_MRxNR(int k, double *A, int lda, double *B, int ldb, double *C, int ldc) {
+  int ir, jr;
+  int p;
+  for (jr = 0; jr < DGEMM_NR; jr++) {
+    for (ir = 0; ir < DGEMM_MR; ir++) {
+      AddDot(k, &A(ir, 0), lda, &B(0, jr), ldb, &C(ir, jr));
+      AddDot(k, &A(ir + 1, 0), lda, &B(0, jr), ldb, &C(ir + 1, jr));
+      AddDot(k, &A(ir + 2, 0), lda, &B(0, jr), ldb, &C(ir + 2, jr));
+      AddDot(k, &A(ir + 3, 0), lda, &B(0, jr), ldb, &C(ir + 3, jr));
+      ir += 4;
+    }
+  }
+}
 
 void bl_dgemm(int m, int n, int k, double *A, int lda, double *B, int ldb,
               double *C,  // must be aligned
               int ldc     // ldc must also be aligned
 ) {
   int i, j, p;
+  int ir, jr;
 
   // Early return if possible
   if (m == 0 || n == 0 || k == 0) {
@@ -57,24 +79,11 @@ void bl_dgemm(int m, int n, int k, double *A, int lda, double *B, int ldb,
     return;
   }
 
-  for (j = 0; j < n; j++) {  // Start 2-nd loop
-    for (p = 0; p < k; p++) {
-      // Start 1-st loop
-      double *c_pointer = &C(0, j);
-      for (i = 0; i < m - 4; i += 4) {  // Start 0-th loop
+  for (j = 0; j < n; j += DGEMM_NR) {    // Start 2-nd loop
+    for (i = 0; i < m; i += DGEMM_MR) {  // Start 1-st loop
 
-        // C[ j * ldc + i ] += A[ p * lda + i ] * B[ j * ldb + p ];
-        *c_pointer += A(i, p) * B(p, j);            // Each operand is a MACRO defined in bl_dgemm() function.
-        *(c_pointer + 1) += A(i + 1, p) * B(p, j);  // Each operand is a MACRO defined in bl_dgemm() function.
-        *(c_pointer + 2) += A(i + 2, p) * B(p, j);  // Each operand is a MACRO defined in bl_dgemm() function.
-        *(c_pointer + 3) += A(i + 3, p) * B(p, j);  // Each operand is a MACRO defined in bl_dgemm() function.
-        c_pointer += 4;
-      }  // End   0-th loop
-      while (i < m) {
-        *c_pointer += A(i, p) * B(p, j);
-        i++;
-        c_pointer++;
-      }
+      AddDot_MRxNR(k, &A(i, 0), lda, &B(0, j), ldb, &C(i, j), ldc);
+
     }  // End   1-st loop
   }    // End   2-nd loop
 }

@@ -1,5 +1,5 @@
-CC  = gcc
-CXX = g++
+CC  = gcc-10
+CXX = g++-10
 
 ARCH = ar
 ARCHFLAGS = cr

@@ -53,8 +53,8 @@
 extern "C" {
 #endif
 
-#define DGEMM_MR 1
-#define DGEMM_NR 1
+#define DGEMM_MR 4
+#define DGEMM_NR 4
 
 #define GEMM_SIMD_ALIGN_SIZE 32
 
