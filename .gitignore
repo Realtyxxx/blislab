@@ -14,3 +14,8 @@
 *.pyc
 .DS_Store
 *bak
+
+
+# add by tyx
+.vscode
+settings.json
