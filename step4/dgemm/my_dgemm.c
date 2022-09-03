@@ -123,7 +123,7 @@ void bl_macro_kernel(
         int    ldc
         )
 {
-    int bl_ic_nt;
+    // int bl_ic_nt;
     int    i, ii, j;
     aux_t  aux;
     char *str;
@@ -144,14 +144,14 @@ void bl_macro_kernel(
         for ( i = 0; i < m; i += DGEMM_MR ) {                    // 1-th loop around micro-kernel
             aux.m = min( m - i, DGEMM_MR );
             if ( i + DGEMM_MR >= m ) {
-                aux.b_next += DGEMM_NR * k;
+                aux.b_next += DGEMM_NR * k; // 下一个 B 寄存器 panel 的起始位置
             }
 
             ( *bl_micro_kernel ) (
                     k,
-                    &packA[ i * k ],
-                    &packB[ j * k ],
-                    &C[ j * ldc + i ],
+                    &packA[ i * k ],  // pack 好的 A block 中 第 i / MR + 1 个 寄存器 panel 的初始地址
+                    &packB[ j * k ],  // pack 好的 B block 中 第 j / NR + 1 个 寄存器 panel 的初始地址
+                    &C[ j * ldc + i ], // C 的初始地址
                     (unsigned long long) ldc,
                     &aux
                     );
@@ -221,30 +221,31 @@ void bl_dgemm(
                 int     my_end;
 
                 bl_get_range( m, DGEMM_MR, &my_start, &my_end );
+                // * 这里其实就是给ic划分闻之，分配每个小A块
 
                 for ( ic = my_start; ic < my_end; ic += DGEMM_MC ) {              // 3-rd loop around micro-kernel
 
                     ib = min( my_end - ic, DGEMM_MC );
 
-                    for ( i = 0; i < ib; i += DGEMM_MR ) {
-                        packA_mcxkc_d(
-                                min( ib - i, DGEMM_MR ),
+                    for ( ir = 0; ir < ib; ir += DGEMM_MR ) { // * I changed the variable name from i to ir
+                        packA_mcxkc_d( // ? 打包 A 矩阵 mc * kc , mc / mr 次循环, 这里启动了多线程，所以就是每个线程打包一部分了, 并且，分配线程数目和内存 大小都和 bl_ic_nt 挂钩，所以不会有数据竞争
+                                min( ib - ir, DGEMM_MR ),
                                 pb,
                                 &XA[ pc * lda ],
                                 lda,
-                                ic + i,
-                                &packA[ tid * DGEMM_MC * pb + i * pb ]
+                                ic + ir,
+                                &packA[ tid * DGEMM_MC * pb + ir * pb ]
                                 );
                     }
 
                     bl_macro_kernel(
-                            ib,
-                            jb,
-                            pb,
-                            packA  + tid * DGEMM_MC * pb,
-                            packB,
-                            &C[ jc * ldc + ic ], 
-                            ldc
+                            ib, // MC
+                            jb, // NC
+                            pb, // KC
+                            packA  + tid * DGEMM_MC * pb, // 第 tid个线程的 A block 初始位置
+                            packB, // 正在共享的这个 B pannel
+                            &C[ jc * ldc + ic ], // C block 的初始位置
+                            ldc // M
                             );
 
                 }                                                                // End 3.rd loop around micro-kernel

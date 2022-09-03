@@ -1,6 +1,7 @@
 {
   "files.associations": {
     "*.S": "arm",
-    "bl_dgemm.h": "c"
+    "bl_dgemm.h": "c",
+    "bl_dgemm_kernel.h": "c"
   }
 }

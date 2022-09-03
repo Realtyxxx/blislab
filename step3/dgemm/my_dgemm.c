@@ -48,17 +48,17 @@
 #include "bl_dgemm_kernel.h"
 #include "bl_dgemm.h"
 
-inline void packA_mcxkc_d(
+inline void packA_mcxkc_d( // ? 实际上打包 mr * kc , 外部循环打包了 mc * kc
         int    m,
         int    k,
         double *XA,
         int    ldXA,
-        int    offseta,
+        int    offseta, // ? 从上倒下， 第 ic 个大块 的
         double *packA
         )
 {
     int    i, p;
-    double *a_pntr[ DGEMM_MR ];
+    double *a_pntr[ DGEMM_MR ]; // ? 指针数组指向一纵列， 每次 一纵列一纵列循环赋值
 
     for ( i = 0; i < m; i ++ ) {
         a_pntr[ i ] = XA + ( offseta + i );
@@ -82,7 +82,7 @@ inline void packA_mcxkc_d(
  * --------------------------------------------------------------------------
  */
 
-inline void packB_kcxnc_d(
+inline void packB_kcxnc_d( // ? 实际上只是打包了 kc * nr
         int    n,
         int    k,
         double *XB,
@@ -90,15 +90,15 @@ inline void packB_kcxnc_d(
         int    offsetb,
         double *packB
         )
-{
+{ 
     int    j, p; 
     double *b_pntr[ DGEMM_NR ];
 
-    for ( j = 0; j < n; j ++ ) {
+    for ( j = 0; j < n; j ++ ) { // ? 横向留住最顶上的指针位置， 这时候他们是跨 ldXB 的跨度, 但在后面将会放在一块
         b_pntr[ j ] = XB + ldXB * ( offsetb + j );
     }
 
-    for ( j = n; j < DGEMM_NR; j ++ ) {
+    for ( j = n; j < DGEMM_NR; j ++ ) {  // ? 当且仅当 jb - j  < DGEMM_NR 时候, 最后一块，做填充
         b_pntr[ j ] = XB + ldXB * ( offsetb + 0 );
     }
 
@@ -133,7 +133,7 @@ void bl_macro_kernel(
         for ( i = 0; i < m; i += DGEMM_MR ) {                    // 1-th loop around micro-kernel
             aux.m = min( m - i, DGEMM_MR );
             if ( i + DGEMM_MR >= m ) {
-                aux.b_next += DGEMM_NR * k;
+                aux.b_next += DGEMM_NR * k; //FIXME: what here means
             }
 
             ( *bl_micro_kernel ) (
@@ -174,22 +174,22 @@ void bl_dgemm(
     }
 
     // Allocate packing buffers
-    packA  = bl_malloc_aligned( DGEMM_KC, ( DGEMM_MC + 1 ) , sizeof(double) );
-    packB  = bl_malloc_aligned( DGEMM_KC, ( DGEMM_NC + 1 ) , sizeof(double) );
+    packA  = bl_malloc_aligned( DGEMM_KC, ( DGEMM_MC + 1 ) , sizeof(double) ); // ? FIXME: 为什么 要以 DGEMM_MC + 1 计算大小 得到 (mc + 1) * kc 为了多打包一份？
+    packB  = bl_malloc_aligned( DGEMM_KC, ( DGEMM_NC + 1 ) , sizeof(double) ); // ? FIXME: 为什么 要以 DGEMM_NC + 1 计算大小 得到 (nc + 1) * kc
 
     for ( jc = 0; jc < n; jc += DGEMM_NC ) {                                       // 5-th loop around micro-kernel
         jb = min( n - jc, DGEMM_NC );
         for ( pc = 0; pc < k; pc += DGEMM_KC ) {                                   // 4-th loop around micro-kernel
             pb = min( k - pc, DGEMM_KC );
 
-            for ( j = 0; j < jb; j += DGEMM_NR ) {
+            for ( j = 0; j < jb; j += DGEMM_NR ) { // 一次性打包 kc * nc
                 packB_kcxnc_d(
-                        min( jb - j, DGEMM_NR ),
-                        pb,
-                        &XB[ pc ],
-                        k, // should be ldXB instead
-                        jc + j,
-                        &packB[ j * pb ]
+                        min( jb - j, DGEMM_NR ),       //* n
+                        pb,                            //* k
+                        &XB[ pc ],                     //* XB
+                        k, // should be ldXB instead   //* ldXB
+                        jc + j,                        //* offsetb
+                        &packB[ j * pb ]               //* packB
                         );
             }
 
@@ -200,12 +200,12 @@ void bl_dgemm(
 
                 for ( i = 0; i < ib; i += DGEMM_MR ) {
                     packA_mcxkc_d(
-                            min( ib - i, DGEMM_MR ),
-                            pb,
-                            &XA[ pc * lda ],
-                            m,
-                            ic + i,
-                            &packA[ 0 * DGEMM_MC * pb + i * pb ]
+                            min( ib - i, DGEMM_MR ),              //* m
+                            pb,                                   //* k (KC)
+                            &XA[ pc * lda ],                      //* *XA
+                            m,                                    //* ldXA
+                            ic + i,                               //* offseta
+                            &packA[ 0 * DGEMM_MC * pb + i * pb ]  //* packA
                             );
                 }
 
